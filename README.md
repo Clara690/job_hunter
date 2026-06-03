@@ -9,7 +9,7 @@ Sending tasks (Producer) → RabbitMQ → Worker (by which the scraper is conduc
 ```
 ## The tools used 
 | tool | function | 
-| --- | --- | --- |
+| --- | --- | 
 | Python 3.11 | The main developing language |
 | [uv](https://docs.astral.sh/uv/) | package management |
 | [Celery](https://docs.celeryq.dev/) | asynchronous task queue|
