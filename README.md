@@ -34,9 +34,11 @@ Sending tasks (Producer) → RabbitMQ → Worker (by which the scraper is conduc
     uv run celery -A scraper.worker worker --loglevel=info
     uv run celery -A scraper.worker worker -Q 104_jobs,cake_jobs --loglevel=info 
 
-    *rename worker*
+*rename worker*
     uv run celery -A scraper.worker worker -n {name} --loglevel=info
 
 ### alternatively, running it using Docker
-    create a container
+*create a container*
     docker run -it --rm ubuntu:22.04 bash
+*create a network*
+    docker network create job_network
