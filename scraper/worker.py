@@ -25,6 +25,6 @@ app = Celery("task",
                  "scraper.tasks_104_scraper", # scraping 104
                  "scraper.tasks_cake_scraper" # scraping Cake
              ],
-
+            #  broker=f"pyamqp://{WORKER_ACCOUNT}:{WORKER_PASSWORD}@rabbitmq:{RABBITMQ_PORT}/")
              broker=f"amqp://{WORKER_ACCOUNT}:{WORKER_PASSWORD}@{RABBITMQ_HOST}:{RABBITMQ_PORT}//")
 
