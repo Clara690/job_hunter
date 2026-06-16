@@ -14,7 +14,7 @@ from scraper.tasks_cake_scraper import scrape_cake_jobs_upload_mysql
 
 # ------ 104 ------ loop ver. #
 # start page and end page
-start = 31
+start = 1
 end = 35
 search_terms = ['資料工程師', '資料分析師', '資料科學家', '軟體工程師']
 
@@ -30,13 +30,13 @@ for search_term in search_terms:
 # ------ Cake ------ #
 
 # the roles to look for on cake
-# search_keywords = ['data engineer', 'data analyst', 'ml engineer', 
-#                    'software engineer', 'software developer']
-# start = 1
-# end = 30
-# for search_keyword in search_keywords:
-#     for page_num in range(start, end+1):
-#     # send the task to the 'cake_jobs' queue
-#         task_cake = scrape_cake_jobs_upload_mysql.s(search_keyword, page_num)
-#         task_cake.apply_async(queue='cake_jobs') # send the task to the 'cake_jobs' queue
-#     print(f'{search_keyword} a total of:{end - start +1} tasks task for Cake scraper has been sent to the queue.')
+search_keywords = ['data engineer', 'data analyst', 'ml engineer', 
+                   'software engineer', 'software developer']
+start = 1
+end = 30
+for search_keyword in search_keywords:
+    for page_num in range(start, end+1):
+    # send the task to the 'cake_jobs' queue
+        task_cake = scrape_cake_jobs_upload_mysql.s(search_keyword, page_num)
+        task_cake.apply_async(queue='cake_jobs') # send the task to the 'cake_jobs' queue
+    print(f'{search_keyword} a total of:{end - start +1} tasks task for Cake scraper has been sent to the queue.')

@@ -126,7 +126,7 @@ def scrape_cake_jobs(search_terms, page):
             'popularity': job.get('unique_impressions_count'),
             'last_updated': datetime.fromisoformat(job.get('content_updated_at').replace('Z', '+00:00')),
             # construct the relative path 
-            'link': job.get('page', {}).get('path')+ job.get('path')
+            'link': job.get('page', {}).get('path')+ '/jobs/' + job.get('path')
         }
         cleaned_jobs.append(filtered_job)
     return cleaned_jobs
