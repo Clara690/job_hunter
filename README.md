@@ -1,6 +1,10 @@
 ## What is the project about 
 The project consists of several web scrapers, which fetch the data related job postings from 
-some of the major Taiwanese job searching websites including [104](https://www.104.com.tw/), [1111](https://www.1111.com.tw/) and [Cake](https://www.cake.me/jobs).
+some of the major Taiwanese job searching websites including,
+ 
+- [104](https://www.104.com.tw/)
+- [1111](https://www.1111.com.tw/) 
+- [Cake](https://www.cake.me/jobs)
 
 ## The workflow 
 The pipeline looks like this
@@ -17,7 +21,9 @@ Sending tasks (Producer) → RabbitMQ → Worker (by which the scraper is conduc
 | [Flower](https://flower.readthedocs.io/) | Celery GUI |
 
 ## How to run this project 
-### set up 
+You can choose to either run this project locally or using docker 😃
+
+### Run the project locally  
 
 #### start the message broker: RabbitMQ
 
@@ -49,4 +55,16 @@ docker run -it --rm ubuntu:22.04 bash
 
 ```text
 docker network create job_network
+```
+
+*run the procuder using docker compose to send tasks*
+
+```text
+docker compose -f docker-compose-producer.yml up -d
+```
+
+*run the worker using docker compose to execute tasks*
+
+```text
+docker compose -f docker-compose-worker.yml up -d
 ```

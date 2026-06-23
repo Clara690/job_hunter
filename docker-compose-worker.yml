@@ -15,7 +15,7 @@ services:
   scraper_cake:
     image: clara690/scraper:${DOCKER_IMAGE_VERSION}
     hostname: "cake"
-    command: uv run --env-file.env celery -A scraper.worker worker --loglevel=info --hostname=%h -Q cake_jobs
+    command: uv run --env-file .env celery -A scraper.worker worker --loglevel=info --hostname=%h -Q cake_jobs
 
     restart: always
     environment:
