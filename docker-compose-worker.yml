@@ -4,7 +4,7 @@ services:
   scraper_104:
     image: clara690/scraper:${DOCKER_IMAGE_VERSION}
     hostname: "job4"
-    command: uv run --env-file.env celery -A scraper.worker worker --loglevel=info --hostname=%h -Q 104_jobs
+    command: uv run --env-file .env celery -A scraper.worker worker --loglevel=info --hostname=%h -Q 104_jobs
     # restart the container if if breaks down
     restart: always
     environment:
