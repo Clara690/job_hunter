@@ -1,7 +1,7 @@
 from scraper.worker import app
 import requests
 from bs4 import BeautifulSoup
-import time
+import time, random
 import pandas as pd
 import numpy as np
 from loguru import logger 
@@ -65,35 +65,50 @@ def scrape_104_jobs(search_term, page):
     # for storing the results
     jobs = []
     # the acutal scraping process
+    # network level failure
     try:
         response = requests.get(based_url, params=params, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            data = data["data"]
-            for job in data:
-                raw_loc = job["jobAddrNoDesc"]
-                description = {
-                    "job_name": job["jobName"],
-                    "company": job["custName"],
-                    "raw_location": raw_loc,
-                    "city":raw_loc[:3] if raw_loc[:3] else None,
-                    "district":raw_loc[3:] if raw_loc[3:] else None,
-                    "experience": job["jobRo"],
-                    "remote": job["remoteWorkType"],
-                    "salary_min": job["salaryLow"],
-                    "salary_max": job["salaryHigh"],
-                    "link": job["link"]["job"],
-                }
-                jobs.append(description)
-            df = pd.DataFrame(jobs)
-            df = df.replace({np.nan: None})
-            return df
-        else:
-            print(f"Failed to retrieve data: {response.status_code}")
-            return None
-    except Exception as e:
-        print(f"An error occurred: {e}")
+        
+    except requests.exceptions.RequestException:
+        logger.exception(f'Network error while scraping 104, page {page}, term "{search_term}".')
+        # let Celery retry automatically
+        raise
+    if response.status_code != 200:
+        logger.warning(f'Status code {response.status_code} for page {page}, term "{search_term}".')
         return None
+    # parsing level failure -> change in the response 
+    try:
+        data = response.json['data']
+    except (KeyError, ValueError):
+        logger.exception(f'Unexpected response shape from 104 on page {page}, term "{search_term}".')
+        return None
+    jobs = []
+    for job in data:
+        try:
+            raw_loc = job["jobAddrNoDesc"]
+            description = {
+                "job_name": job["jobName"],
+                "company": job["custName"],
+                "raw_location": raw_loc,
+                "city":raw_loc[:3] if raw_loc[:3] or None,
+                "district":raw_loc[3:] if raw_loc[3:] or None,
+                "experience": job["jobRo"],
+                "remote": job["remoteWorkType"],
+                "salary_min": job["salaryLow"],
+                "salary_max": job["salaryHigh"],
+                "link": job["link"]["job"],
+            }
+            jobs.append(description)
+        except KeyError as e:
+            logger.warning(f'Skipping one malformed job listing (missing key {e}) on page {page}')
+            continue
+    if not jobs:
+        return None
+    
+    df = pd.DataFrame(jobs)
+    df = df.replace({np.nan: None})
+    time.sleep(random.uniform(1.5, 3.5))
+    return df
 
     
 # upload to MySQL in one task

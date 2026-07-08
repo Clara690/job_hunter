@@ -5,31 +5,22 @@ from bs4 import BeautifulSoup
 import re 
 import json
 from datetime import datetime
+import time, random
+import uuid
 import pandas as pd
 from loguru import logger 
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.mysql import insert
 from sqlalchemy import select
 from sqlalchemy.pool import NullPool
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import MetaData, Table, Column, Integer, String, DateTime, Text, TIMESTAMP, UniqueConstraint, text
 from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT
         
 
 # CAKE_JOB_URL = 'https://www.cake.me/jobs'
 API_URL = 'https://api.cake.me/api/client/v1/jobs/search'
-# DEFAULT_HEADERS = {
-#     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
-# }
-HEADERS = {
-     'sec-ch-ua-platform': '"Windows"',
-    'Referer': 'https://www.cake.me/',
-    'sec-ch-ua': '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
-    'sec-ch-ua-mobile': '?0',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
-    'content-type': 'application/json',
-    'X-Search-Session-Id': '83f5fcf0-19ee-40e9-b390-17dc78c0ae92',
-}
+
 
 # create the connection to MySQL database
 engine = create_engine(
@@ -82,74 +73,104 @@ metadata.create_all(engine)
 
 # the main function to scrape job listings from Cake's job board based on the search term
 # @app.task()
-def scrape_cake_jobs(search_terms, page):
+def scrape_cake_jobs(search_term, page):
+    # headers
+    HEADERS = {
+        'sec-ch-ua-platform': '"Windows"',
+        'Referer': 'https://www.cake.me/',
+        'sec-ch-ua': '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'content-type': 'application/json',
+        'X-Search-Session-Id': str(uuid.uuid4()),
+    }
 
 
     # add other search parameter
     json_data = {
-        'query': search_terms,
+        'query': search_term,
         'filters': {},
         'sort_by': 'popularity',
         'page': page,
         'per_page': 10,
     }
+    # network level failure
     try:
         response = requests.post(API_URL, json=json_data, headers=HEADERS, timeout=10)
-        print(response.url)
-        if  response.status_code != 200:
-            print(f'Failed to access the website. Status code: {response.status_code}')
-
-            return None
         # soup = BeautifulSoup(response.content, 'html.parser')
-    except requests.exceptions.RequestException as e:
-        print(f'Network error occurred:{e}')
+    except requests.exceptions.RequestException:
+        logger.exception(f'Network error while scraping cake, page {page}, term "{search_term}".')
+        raise
+    
+    if  response.status_code != 200:
+        logger.warning(f'Status code {response.status_code} for page {page}, term "{search_term}".')
         return None
     
-    # the raw data of job postings
-    data = response.json()
-    all_jobs = data['data']
+    # parsing level failure 
+    try: 
+        data = response.json()
+        # the raw data of job postings
+        all_jobs = data['data']
+    except (KeyError, ValueError):
+        logger.exception(f'Unexpected response shape from cake on page {page}, term "{search_term}".')
+        return None
+
 
     # for storing the results
     cleaned_jobs = []
 
     for job in all_jobs:
-        #location information, since it's nested so needed to be processed separately
-        locales = job.get('locations_with_locale', [])
+        try:
+            #location information, since it's nested so needed to be processed separately
+            locales = job.get('locations_with_locale', [])
 
-        # extract all 'en' values and ignore any missing ones
-        english_locations = [loc.get('en') for loc in locales if loc.get('en')]
+            # extract all 'en' values and ignore any missing ones
+            english_locations = [loc.get('en') for loc in locales if loc.get('en')]
 
-        # some basic preprocessing to prevent the function from crashing
-        title = job.get('title')
-        company_name = job.get('page', {}).get('name')
-        salary_min = job.get('salary', {}).get('min')
-        salary_max = job.get('salary', {}).get('max')
+            # some basic preprocessing to prevent the function from crashing
 
-        # new dictionary with only the desired keys
-        filtered_job = {            
-            'job_name': title[:100] if len(title) > 100 else title,
-            'company': company_name[:100] if len(company_name) > 100 else company_name,
-            'raw_locations': english_locations,
-            'job_type': job.get('job_type'),
-            'experience': job.get('min_work_exp_year'),
-            'manage_resp': job.get('number_of_management'),
-            'seniority':job.get('seniority_level'),
-            'remote': None,
-            'salary_min': int(float(salary_min)) if salary_min else None,
-            'salary_max': int(float(salary_max)) if salary_max else None,
-            'salary_crcy': job.get('salary', {}).get('currency'),
-            'salary_type':job.get('salary', {}).get('type'),
-            'popularity': job.get('unique_impressions_count'),
-            'last_updated': datetime.fromisoformat(job.get('content_updated_at').replace('Z', '+00:00')),
-            # construct the relative path 
-            'link': job.get('page', {}).get('path')+ '/jobs/' + job.get('path')
-        }
-        cleaned_jobs.append(filtered_job)
+            title = job.get('title')
+            company_name = job.get('page', {}).get('name')
+            if title is None or company_name is None:
+                logger.warning(f'Skipping job with missing title/ company: {job.get('path')}')
+                continue
+            salary_min = job.get('salary', {}).get('min')
+            salary_max = job.get('salary', {}).get('max')
+
+            # new dictionary with only the desired keys
+            filtered_job = {            
+                'job_name': title[:100] if len(title) > 100 else title,
+                'company': company_name[:100] if len(company_name) > 100 else company_name,
+                'raw_locations': english_locations,
+                'job_type': job.get('job_type'),
+                'experience': job.get('min_work_exp_year'),
+                'manage_resp': job.get('number_of_management'),
+                'seniority':job.get('seniority_level'),
+                'remote': None,
+                'salary_min': int(float(salary_min)) if salary_min or None,
+                'salary_max': int(float(salary_max)) if salary_max or None,
+                'salary_crcy': job.get('salary', {}).get('currency'),
+                'salary_type':job.get('salary', {}).get('type'),
+                'popularity': job.get('unique_impressions_count'),
+                'last_updated': datetime.fromisoformat(job.get('content_updated_at').replace('Z', '+00:00')),
+                # construct the relative path 
+                'link': job.get('page', {}).get('path')+ '/jobs/' + job.get('path')
+            }
+            cleaned_jobs.append(filtered_job)
+        except KeyError as e:
+            logger.warning(f'Skipping one malformed job listing (missing key {e}) on page {page}')
+            continue
+    if not all_jobs:
+        return None
+    time.sleep(random.uniform(1.5, 3.5))
     return cleaned_jobs
 
 
 # upload the data to MySQL 
-@app.task(bind=True, max_retries=3)
+@app.task(bind=True, autoretry_for=(OperationalError,), 
+    retry_backoff=True, # waits between retries,
+    max_retries=3)
 def scrape_cake_jobs_upload_mysql(self, search_term, page):
 
     # the data scrpae from cake 
