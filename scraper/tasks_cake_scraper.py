@@ -14,7 +14,8 @@ from sqlalchemy.dialects.mysql import insert
 from sqlalchemy import select
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError
-from sqlalchemy import MetaData, Table, Column, Integer, String, DateTime, Text, TIMESTAMP, UniqueConstraint, text
+from sqlalchemy import (MetaData, Table, Column, Integer, String, DateTime, Text, 
+                        TIMESTAMP, UniqueConstraint, ForeignKey, text)
 from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT
         
 
@@ -36,6 +37,7 @@ jobs_table = Table(
      'jobs_cake', 
      metadata,
      Column('id', Integer, primary_key=True, autoincrement=True),
+     Column('source_job_id', String(100), nullable=False, unique=True),
      Column('job_name', String(100), nullable=False),
      Column('company', String(100), nullable=False),
      Column('job_type', String(50), nullable=True),  
@@ -53,14 +55,14 @@ jobs_table = Table(
      Column('inserted_at', TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), nullable=False),
     
 #     # unique key to prevent duplicated job postings
-    UniqueConstraint('job_name', 'company', name='uix_job_company')
+    UniqueConstraint('source_job_id', name='uix_source_job_id')
 )
 # the bridge table 
 job_location_table = Table(
     'job_location_cake',
     metadata,
     Column('id', Integer, primary_key=True, autoincrement=True),
-    Column('job_id', Integer, nullable=False),
+    Column('job_id', Integer, ForeignKey('jobs_cake.id', ondelete='CASCADE'), nullable=False),
     Column('location', String(100), nullable=False),    
     
     # unique key to prevent duplicate locations for the same job
@@ -133,13 +135,14 @@ def scrape_cake_jobs(search_term, page):
             title = job.get('title')
             company_name = job.get('page', {}).get('name')
             if title is None or company_name is None:
-                logger.warning(f'Skipping job with missing title/ company: {job.get('path')}')
+                logger.warning(f"Skipping job with missing title/ company: {job.get('path')}")
                 continue
             salary_min = job.get('salary', {}).get('min')
             salary_max = job.get('salary', {}).get('max')
 
             # new dictionary with only the desired keys
             filtered_job = {            
+                'source_job_id':job.get('path'),
                 'job_name': title[:100] if len(title) > 100 else title,
                 'company': company_name[:100] if len(company_name) > 100 else company_name,
                 'raw_locations': english_locations,
@@ -148,8 +151,8 @@ def scrape_cake_jobs(search_term, page):
                 'manage_resp': job.get('number_of_management'),
                 'seniority':job.get('seniority_level'),
                 'remote': None,
-                'salary_min': int(float(salary_min)) if salary_min or None,
-                'salary_max': int(float(salary_max)) if salary_max or None,
+                'salary_min': int(float(salary_min)) if salary_min else None,
+                'salary_max': int(float(salary_max)) if salary_max else None,
                 'salary_crcy': job.get('salary', {}).get('currency'),
                 'salary_type':job.get('salary', {}).get('type'),
                 'popularity': job.get('unique_impressions_count'),

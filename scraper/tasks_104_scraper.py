@@ -1,6 +1,7 @@
 from scraper.worker import app
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 import time, random
 import pandas as pd
 import numpy as np
@@ -11,7 +12,7 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError
 from sqlalchemy import MetaData, Table, Column, Integer, String, CHAR, Text, TIMESTAMP, UniqueConstraint, text
 from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT
-        
+from scraper.backfill import extract_104_job_id
 # create the connection to MySQL database
 engine = create_engine(
     f"mysql+pymysql://{MYSQL_ACCOUNT}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/data_jobs",
@@ -24,6 +25,7 @@ jobs_table = Table(
     "jobs_104", 
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("source_job_id", String(50), nullable=False, unique=True),
     Column("job_name", String(255), nullable=False),
     Column("company", String(50), nullable=False),
     Column("raw_location", String(50), nullable=False),
@@ -37,11 +39,14 @@ jobs_table = Table(
     Column("inserted_at", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), nullable=False),
     
     # unique key to prevent duplicated job postings
-    UniqueConstraint("job_name", "company", "raw_location", name="uix_job_company_location")
+    UniqueConstraint("source_job_id", name="uix_source_job_id")
+    # UniqueConstraint("job_name", "company", "raw_location", name="uix_job_company_location")
 )
 
 # create table if not exist 
 metadata.create_all(engine)
+
+
 
 # the scrape function for 104 jobs, takes in the search term and the page number as parameters
 def scrape_104_jobs(search_term, page):
@@ -78,7 +83,7 @@ def scrape_104_jobs(search_term, page):
         return None
     # parsing level failure -> change in the response 
     try:
-        data = response.json['data']
+        data = response.json()['data']
     except (KeyError, ValueError):
         logger.exception(f'Unexpected response shape from 104 on page {page}, term "{search_term}".')
         return None
@@ -87,11 +92,12 @@ def scrape_104_jobs(search_term, page):
         try:
             raw_loc = job["jobAddrNoDesc"]
             description = {
+                "source_job_id": extract_104_job_id(job['link']['job']),
                 "job_name": job["jobName"],
                 "company": job["custName"],
                 "raw_location": raw_loc,
-                "city":raw_loc[:3] if raw_loc[:3] or None,
-                "district":raw_loc[3:] if raw_loc[3:] or None,
+                "city":raw_loc[:3] if raw_loc[:3] else None,
+                "district":raw_loc[3:] if raw_loc[3:] else None,
                 "experience": job["jobRo"],
                 "remote": job["remoteWorkType"],
                 "salary_min": job["salaryLow"],
