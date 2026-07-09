@@ -35,6 +35,8 @@ jobs_table = Table(
     Column("remote", CHAR(3), nullable=False),
     Column("salary_min", Integer, nullable=False),
     Column("salary_max", Integer, nullable=False),
+    Column("period", Integer, nullable=True),      
+    Column("job_type", Integer, nullable=True),
     Column("link", Text, nullable=False),
     Column("inserted_at", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), nullable=False),
     
@@ -102,6 +104,8 @@ def scrape_104_jobs(search_term, page):
                 "remote": job["remoteWorkType"],
                 "salary_min": job["salaryLow"],
                 "salary_max": job["salaryHigh"],
+                "period": job.get("period"),        
+                "job_type": job.get("jobType"), 
                 "link": job["link"]["job"],
             }
             jobs.append(description)
@@ -141,7 +145,8 @@ def scrape_104_jobs_upload_mysql(self, search_term, page):
         on_duplicate_stmt = insert_stmt.on_duplicate_key_update(
             salary_min=insert_stmt.inserted.salary_min,
             salary_max=insert_stmt.inserted.salary_max,
-            
+            period=insert_stmt.inserted.period,
+            job_type=insert_stmt.inserted.job_type
         )
         # execute the insert statement
         conn.execute(on_duplicate_stmt)
