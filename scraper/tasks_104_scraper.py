@@ -37,6 +37,7 @@ jobs_table = Table(
     Column("salary_max", Integer, nullable=False),
     Column("period", Integer, nullable=True),      
     Column("job_type", Integer, nullable=True),
+    Column("salary_confidence", String(20), nullable=True),
     Column("link", Text, nullable=False),
     Column("inserted_at", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), nullable=False),
     
@@ -48,7 +49,15 @@ jobs_table = Table(
 # create table if not exist 
 metadata.create_all(engine)
 
-
+# a function for classifying salary type as it does not exisit in the raw data
+MONTHLY_SALARY_FLOOR = 29000 # minimum wage in TW in 2026
+def classify_salary_confidence(salary_min: int, salary_max: int) -> str:
+    if not salary_min and not salary_max:
+        return 'unspecified'
+    # if the either of the salary range does not fall in the valid range
+    if (salary_min and salary_min < MONTHLY_SALARY_FLOOR) or (salary_max and salary_max < MONTHLY_SALARY_FLOOR):
+        return 'non_monthly'
+    return 'monthly'
 
 # the scrape function for 104 jobs, takes in the search term and the page number as parameters
 def scrape_104_jobs(search_term, page):
@@ -106,6 +115,7 @@ def scrape_104_jobs(search_term, page):
                 "salary_max": job["salaryHigh"],
                 "period": job.get("period"),        
                 "job_type": job.get("jobType"), 
+                "salary_confidence": classify_salary_confidence(job['salaryLow'], job['salaryHigh']),
                 "link": job["link"]["job"],
             }
             jobs.append(description)
@@ -119,6 +129,8 @@ def scrape_104_jobs(search_term, page):
     df = df.replace({np.nan: None})
     time.sleep(random.uniform(1.5, 3.5))
     return df
+
+
 
     
 # upload to MySQL in one task
@@ -146,7 +158,8 @@ def scrape_104_jobs_upload_mysql(self, search_term, page):
             salary_min=insert_stmt.inserted.salary_min,
             salary_max=insert_stmt.inserted.salary_max,
             period=insert_stmt.inserted.period,
-            job_type=insert_stmt.inserted.job_type
+            job_type=insert_stmt.inserted.job_type,
+            salary_confidence=insert_stmt.inserted.salary_confidence
         )
         # execute the insert statement
         conn.execute(on_duplicate_stmt)
