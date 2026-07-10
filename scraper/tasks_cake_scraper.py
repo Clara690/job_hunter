@@ -15,7 +15,7 @@ from sqlalchemy.dialects.mysql import insert
 from sqlalchemy import select
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError
-from sqlalchemy import (MetaData, Table, Column, Integer, String, DateTime, Text, 
+from sqlalchemy import (MetaData, Table, Column, Integer, Numeric, String, DateTime, Text, 
                         TIMESTAMP, UniqueConstraint, ForeignKey, text)
 from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT        
 
@@ -49,8 +49,6 @@ jobs_table = Table(
      Column('salary_max', Integer, nullable=True),
      Column('salary_crcy', String(5), nullable=True), # currency
      Column('salary_type', String(50), nullable=True),
-     Column('salary_min_monthly_twd', Integer, nullable=True), 
-     Column('salary_max_monthly_twd', Integer, nullable=True),
      Column('popularity', Integer, nullable=True),
      Column('link', Text, nullable=False),
      Column('last_updated', DateTime(6), nullable=True),

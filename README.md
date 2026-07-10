@@ -43,8 +43,8 @@ The first setup hosts the service locally while the second one run the service i
 
 #### Start the woker 
     uv run celery -A scraper.worker worker --loglevel=info
-    uv run celery -A scraper.worker worker -Q 104_jobs,cake_jobs --loglevel=info 
-    uv run celery -A scraper.worker worker -n {worker_name} -Q 104_jobs,cake_jobs --loglevel=info
+    uv run celery -A scraper.worker worker -Q 104_jobs,cake_jobs,exchange --loglevel=info 
+    uv run celery -A scraper.worker worker -n {worker_name} -Q 104_jobs,cake_jobs,exchange --loglevel=info
 
 *rename worker*
 ```text

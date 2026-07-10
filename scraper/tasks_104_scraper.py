@@ -1,4 +1,5 @@
 from scraper.worker import app
+from scraper.salary_normalization import normalize_104_salary
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
@@ -10,7 +11,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.dialects.mysql import insert
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError
-from sqlalchemy import MetaData, Table, Column, Integer, String, CHAR, Text, TIMESTAMP, UniqueConstraint, text
+from sqlalchemy import (MetaData, Table, Column, Integer, Numeric,
+                        String, CHAR, Text, TIMESTAMP, UniqueConstraint, text)
 from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT
 from scraper.backfill import extract_104_job_id
 # create the connection to MySQL database
@@ -35,6 +37,8 @@ jobs_table = Table(
     Column("remote", CHAR(3), nullable=False),
     Column("salary_min", Integer, nullable=False),
     Column("salary_max", Integer, nullable=False),
+    Column('salary_min_monthly_twd', Numeric(12, 2), nullable=True), 
+    Column('salary_max_monthly_twd', Numeric(12, 2), nullable=True),
     Column("period", Integer, nullable=True),      
     Column("job_type", Integer, nullable=True),
     Column("salary_confidence", String(20), nullable=True),
@@ -51,6 +55,7 @@ metadata.create_all(engine)
 
 # a function for classifying salary type as it does not exisit in the raw data
 MONTHLY_SALARY_FLOOR = 29000 # minimum wage in TW in 2026
+
 def classify_salary_confidence(salary_min: int, salary_max: int) -> str:
     if not salary_min and not salary_max:
         return 'unspecified'
@@ -105,7 +110,7 @@ def scrape_104_jobs(search_term, page):
             description = {
                 "source_job_id": extract_104_job_id(job['link']['job']),
                 "job_name": job["jobName"],
-                "company": job["custName"],
+                "company": job["custName"][:50],
                 "raw_location": raw_loc,
                 "city":raw_loc[:3] if raw_loc[:3] else None,
                 "district":raw_loc[3:] if raw_loc[3:] else None,
@@ -118,6 +123,8 @@ def scrape_104_jobs(search_term, page):
                 "salary_confidence": classify_salary_confidence(job['salaryLow'], job['salaryHigh']),
                 "link": job["link"]["job"],
             }
+            description["salary_min_monthly_twd"] = normalize_104_salary(job["salaryLow"], description['salary_confidence'])
+            description["salary_max_monthly_twd"] = normalize_104_salary(job["salaryHigh"], description['salary_confidence'])
             jobs.append(description)
         except KeyError as e:
             logger.warning(f'Skipping one malformed job listing (missing key {e}) on page {page}')
