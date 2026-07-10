@@ -49,6 +49,8 @@ jobs_table = Table(
      Column('salary_max', Integer, nullable=True),
      Column('salary_crcy', String(5), nullable=True), # currency
      Column('salary_type', String(50), nullable=True),
+     Column('salary_min_monthly_twd', Integer, nullable=True), 
+     Column('salary_max_monthly_twd', Integer, nullable=True),
      Column('popularity', Integer, nullable=True),
      Column('link', Text, nullable=False),
      Column('last_updated', DateTime(6), nullable=True),
@@ -210,7 +212,6 @@ def scrape_cake_jobs_upload_mysql(self, search_term, page):
             jobs_to_insert.append(record)
 
             # create a composite key to track this job
-            # unique_key = (record['job_name'], record['company'])
             unique_key = record['source_job_id']
             location_map[unique_key] = locs
         # insert all jobs 
@@ -224,20 +225,18 @@ def scrape_cake_jobs_upload_mysql(self, search_term, page):
         conn.execute(on_duplicate_stmt)
 
         # fetch the corresponding ids in the main table 
-        job_name = [j['job_name'] for j in jobs_to_insert]
-        companies = [j['company'] for j in jobs_to_insert]
+        source_job_ids = [j['source_job_id'] for j in jobs_to_insert]
 
-        fetch_stmt = select(jobs_table.c.id, jobs_table.c.job_name, jobs_table.c.company).where(
-            jobs_table.c.job_name.in_(job_name),
-            jobs_table.c.company.in_(companies)
-        )
+        fetch_stmt = select(jobs_table.c.id, jobs_table.c.source_job_id).where(
+            jobs_table.c.source_job_id.in_(source_job_ids) 
+            )
         db_jobs = conn.execute(fetch_stmt).fetchall()
 
         # insert location info to the location table
         locations_to_insert = []
         for db_job in db_jobs:
             job_id = db_job.id
-            unique_key = (db_job.job_name, db_job.company)
+            unique_key = db_job.source_job_id
             
             # match the DB id back to the locations 
             if unique_key in location_map:
