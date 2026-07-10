@@ -1,4 +1,5 @@
 from scraper.worker import app
+from scraper.salary_normalization import load_exchange_rate, normalize_cake_salary
 import requests
 import urllib.parse
 from bs4 import BeautifulSoup
@@ -16,8 +17,7 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError
 from sqlalchemy import (MetaData, Table, Column, Integer, String, DateTime, Text, 
                         TIMESTAMP, UniqueConstraint, ForeignKey, text)
-from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT
-        
+from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT        
 
 # CAKE_JOB_URL = 'https://www.cake.me/jobs'
 API_URL = 'https://api.cake.me/api/client/v1/jobs/search'
@@ -49,6 +49,8 @@ jobs_table = Table(
      Column('salary_max', Integer, nullable=True),
      Column('salary_crcy', String(5), nullable=True), # currency
      Column('salary_type', String(50), nullable=True),
+     Column('salary_min_monthly_twd', Integer, nullable=True), 
+     Column('salary_max_monthly_twd', Integer, nullable=True),
      Column('popularity', Integer, nullable=True),
      Column('link', Text, nullable=False),
      Column('last_updated', DateTime(6), nullable=True),
@@ -71,6 +73,9 @@ job_location_table = Table(
 
 # create table if not exist 
 metadata.create_all(engine)
+
+# load the exchange rate table
+exchange_rates_tbl = Table('exchange_rates', metadata, autoload_with=engine)
 
 
 # the main function to scrape job listings from Cake's job board based on the search term
@@ -117,7 +122,11 @@ def scrape_cake_jobs(search_term, page):
     except (KeyError, ValueError):
         logger.exception(f'Unexpected response shape from cake on page {page}, term "{search_term}".')
         return None
-
+    
+    # --- extract the data and clean on the fly --- #
+    # exchange rate table
+    # load it once per page
+    rates = load_exchange_rate(engine, exchange_rates_tbl)
 
     # for storing the results
     cleaned_jobs = []
@@ -160,6 +169,14 @@ def scrape_cake_jobs(search_term, page):
                 # construct the relative path 
                 'link': job.get('page', {}).get('path')+ '/jobs/' + job.get('path')
             }
+            # calculate monthly salary - lower bound
+            filtered_job['salary_min_monthly_twd'] = normalize_cake_salary(
+            filtered_job['salary_min'], filtered_job['salary_type'], filtered_job['salary_crcy'], rates
+        )
+            # calculate monthly salary - higher bound
+            filtered_job['salary_max_monthly_twd'] = normalize_cake_salary(
+            filtered_job['salary_max'], filtered_job['salary_type'], filtered_job['salary_crcy'], rates
+        )
             cleaned_jobs.append(filtered_job)
         except KeyError as e:
             logger.warning(f'Skipping one malformed job listing (missing key {e}) on page {page}')
@@ -175,7 +192,7 @@ def scrape_cake_jobs(search_term, page):
     retry_backoff=True, # waits between retries,
     max_retries=3)
 def scrape_cake_jobs_upload_mysql(self, search_term, page):
-
+    
     # the data scrpae from cake 
     records = scrape_cake_jobs(search_term, page)
 
@@ -195,31 +212,31 @@ def scrape_cake_jobs_upload_mysql(self, search_term, page):
             jobs_to_insert.append(record)
 
             # create a composite key to track this job
-            unique_key = (record['job_name'], record['company'])
+            unique_key = record['source_job_id']
             location_map[unique_key] = locs
         # insert all jobs 
         insert_stmt = insert(jobs_table).values(jobs_to_insert)
         on_duplicate_stmt = insert_stmt.on_duplicate_key_update(
             salary_min = insert_stmt.inserted.salary_min,
-            salary_max = insert_stmt.inserted.salary_max
+            salary_max = insert_stmt.inserted.salary_max,
+            salary_min_monthly_twd=insert_stmt.inserted.salary_min_monthly_twd,
+            salary_max_monthly_twd=insert_stmt.inserted.salary_max_monthly_twd,
         )
         conn.execute(on_duplicate_stmt)
 
         # fetch the corresponding ids in the main table 
-        job_name = [j['job_name'] for j in jobs_to_insert]
-        companies = [j['company'] for j in jobs_to_insert]
+        source_job_ids = [j['source_job_id'] for j in jobs_to_insert]
 
-        fetch_stmt = select(jobs_table.c.id, jobs_table.c.job_name, jobs_table.c.company).where(
-            jobs_table.c.job_name.in_(job_name),
-            jobs_table.c.company.in_(companies)
-        )
+        fetch_stmt = select(jobs_table.c.id, jobs_table.c.source_job_id).where(
+            jobs_table.c.source_job_id.in_(source_job_ids) 
+            )
         db_jobs = conn.execute(fetch_stmt).fetchall()
 
         # insert location info to the location table
         locations_to_insert = []
         for db_job in db_jobs:
             job_id = db_job.id
-            unique_key = (db_job.job_name, db_job.company)
+            unique_key = db_job.source_job_id
             
             # match the DB id back to the locations 
             if unique_key in location_map:
