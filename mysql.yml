@@ -15,8 +15,8 @@ services:
       environment: # 環境變數, 設置 db, user, password, root_password
           MYSQL_DATABASE: data_jobs
           MYSQL_USER: user
-          MYSQL_PASSWORD: '0*Py6u38ofI'
-          MYSQL_ROOT_PASSWORD: 'ppWgnb_mfGe2m_'
+          MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+          MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       restart: always  # if the contianer stops, restart automatically
       volumes:
           - mysql:/var/lib/mysql

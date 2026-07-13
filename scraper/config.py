@@ -1,6 +1,8 @@
 # this is where all the environment variables are stored
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 # if the env variable is not set, use the default value
 # in a dev environment, default value will be used while in production, env variable will be used
 
@@ -18,4 +20,5 @@ RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT", 5672))
 MYSQL_HOST = os.environ.get("MYSQL_HOST", "127.0.0.1")
 MYSQL_PORT = int(os.environ.get("MYSQL_PORT", 3306))
 MYSQL_ACCOUNT = os.environ.get("MYSQL_ACCOUNT", "root")
-MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "ppWgnb_mfGe2m_")
+MYSQL_PASSWORD = os.environ['MYSQL_PASSWORD']
+# MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "ppWgnb_mfGe2m_")
