@@ -15,7 +15,8 @@ from sqlalchemy.dialects.mysql import insert
 from sqlalchemy import select
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError
-from sqlalchemy import (MetaData, Table, Column, Integer, Numeric, String, DateTime, Text, 
+from sqlalchemy import (MetaData, Table, Column, Integer, Numeric, String, DateTime,
+                        Boolean, Text, 
                         TIMESTAMP, UniqueConstraint, ForeignKey, text)
 from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT        
 
@@ -66,6 +67,9 @@ job_location_table = Table(
     Column('id', Integer, primary_key=True, autoincrement=True),
     Column('job_id', Integer, ForeignKey('jobs_cake.id', ondelete='CASCADE'), nullable=False),
     Column('location', String(100), nullable=False),    
+    Column('city_zh', String(10), nullable=True),
+    Column('city_en', String(30), nullable=True),
+    Column('is_overseas', Boolean, nullable=True),
     
     # unique key to prevent duplicate locations for the same job
     UniqueConstraint('job_id', 'location', name='uix_job_id_location')

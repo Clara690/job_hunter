@@ -70,7 +70,7 @@ def backfill_table(table_name: str, extractor, dry_run: bool):
         if dry_run:
             logger.info(
                 f'{table_name}: dry run - would update {len(computed)} rows'
-                f'o rows written'
+                f'0 rows written'
             )
             return 
         if computed:

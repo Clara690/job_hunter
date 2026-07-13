@@ -1,0 +1,15 @@
+services:
+    backfill_loc: # define the service
+      image: clara690/scraper:${DOCKER_IMAGE_VERSION} # the image & tag to use
+      hostname: "job_hunter"
+      command: uv run --env-file=.env python -m scraper.backfill_loc
+
+      environment:
+        - TZ=Asia/Taipei  # set the time zone to Taipei 
+      networks:
+        - job_network    # connect the service to the network 
+
+networks:
+  job_network:
+  # join an exising network 
+    external: True
