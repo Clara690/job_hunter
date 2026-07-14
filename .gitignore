@@ -8,3 +8,7 @@ wheels/
 *.env
 # Virtual environments
 .venv
+# test file
+*_test.*
+
+

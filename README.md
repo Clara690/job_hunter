@@ -26,6 +26,12 @@ You can choose to either run this project locally or using docker 😃
 
 ### Run the project locally  
 
+Set the environment variables to the corresponding setting.
+
+```text
+ENV=DEV python genenv.py
+```
+
 #### Start the message broker: RabbitMQ
 ```text
 docker compose -f rabbitmq.yml up -d
