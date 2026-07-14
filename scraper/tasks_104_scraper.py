@@ -1,5 +1,6 @@
 from scraper.worker import app
-from scraper.salary_normalization import normalize_104_salary
+from scraper.normalization_sal import normalize_104_salary
+from scraper.normalization_loc import load_city_ids
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
@@ -11,10 +12,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.dialects.mysql import insert
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError
-from sqlalchemy import (MetaData, Table, Column, Integer, Numeric,
+from sqlalchemy import (MetaData, Table, Column, Integer, Numeric, ForeignKeyConstraint,
                         String, CHAR, Text, TIMESTAMP, UniqueConstraint, text)
 from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT
-from scraper.backfill import extract_104_job_id
+from scraper.backfill_id import extract_104_job_id
+
 # create the connection to MySQL database
 engine = create_engine(
     f"mysql+pymysql://{MYSQL_ACCOUNT}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/data_jobs",
@@ -33,6 +35,7 @@ jobs_table = Table(
     Column("raw_location", String(50), nullable=False),
     Column("city", String(50),nullable=True),
     Column("district", String(50), nullable=True),
+    Column("city_id", Integer, nullable=True),
     Column("experience", Integer, nullable=False),
     Column("remote", CHAR(3), nullable=False),
     Column("salary_min", Integer, nullable=False),
@@ -46,7 +49,8 @@ jobs_table = Table(
     Column("inserted_at", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), nullable=False),
     
     # unique key to prevent duplicated job postings
-    UniqueConstraint("source_job_id", name="uix_source_job_id")
+    UniqueConstraint("source_job_id", name="uix_source_job_id"),
+    ForeignKeyConstraint(['city_id'], ['cities.id'], name='fk_job_location_city'),
     # UniqueConstraint("job_name", "company", "raw_location", name="uix_job_company_location")
 )
 
@@ -63,6 +67,10 @@ def classify_salary_confidence(salary_min: int, salary_max: int) -> str:
     if (salary_min and salary_min < MONTHLY_SALARY_FLOOR) or (salary_max and salary_max < MONTHLY_SALARY_FLOOR):
         return 'non_monthly'
     return 'monthly'
+
+# the load the `cities` table
+cities_table = Table('cities', metadata, autoload_with=engine)
+city_ids = load_city_ids(engine, cities_table)
 
 # the scrape function for 104 jobs, takes in the search term and the page number as parameters
 def scrape_104_jobs(search_term, page):
@@ -114,6 +122,7 @@ def scrape_104_jobs(search_term, page):
                 "raw_location": raw_loc,
                 "city":raw_loc[:3] if raw_loc[:3] else None,
                 "district":raw_loc[3:] if raw_loc[3:] else None,
+                "city_id": city_ids.get(raw_loc[:3]) if raw_loc[:3] else None,
                 "experience": job["jobRo"],
                 "remote": job["remoteWorkType"],
                 "salary_min": job["salaryLow"],
@@ -166,7 +175,8 @@ def scrape_104_jobs_upload_mysql(self, search_term, page):
             salary_max=insert_stmt.inserted.salary_max,
             period=insert_stmt.inserted.period,
             job_type=insert_stmt.inserted.job_type,
-            salary_confidence=insert_stmt.inserted.salary_confidence
+            salary_confidence=insert_stmt.inserted.salary_confidence,
+            city_id=insert_stmt.inserted.city_id,
         )
         # execute the insert statement
         conn.execute(on_duplicate_stmt)
