@@ -1,5 +1,5 @@
 from scraper.worker import app
-from scraper.salary_normalization import load_exchange_rate, normalize_cake_salary
+from scraper.normalization_sal import load_exchange_rate, normalize_cake_salary
 import requests
 import urllib.parse
 from bs4 import BeautifulSoup
@@ -16,9 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError
 from sqlalchemy import (MetaData, Table, Column, Integer, Numeric, String, DateTime,
-                        Boolean, Text, 
-                        TIMESTAMP, UniqueConstraint, ForeignKey, text)
-from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT        
+                        Boolean, Text, ForeignKey, ForeignKeyConstraint,
+                        TIMESTAMP, UniqueConstraint, text)
+from scraper.config import MYSQL_ACCOUNT, MYSQL_HOST, MYSQL_PASSWORD, MYSQL_PORT    
+from scraper.normalization_loc import load_city_ids, parse_cake_location
 
 # CAKE_JOB_URL = 'https://www.cake.me/jobs'
 API_URL = 'https://api.cake.me/api/client/v1/jobs/search'
@@ -67,12 +68,11 @@ job_location_table = Table(
     Column('id', Integer, primary_key=True, autoincrement=True),
     Column('job_id', Integer, ForeignKey('jobs_cake.id', ondelete='CASCADE'), nullable=False),
     Column('location', String(100), nullable=False),    
-    Column('city_zh', String(10), nullable=True),
-    Column('city_en', String(30), nullable=True),
-    Column('is_overseas', Boolean, nullable=True),
+    Column('city_id', Integer, nullable=True),
     
     # unique key to prevent duplicate locations for the same job
-    UniqueConstraint('job_id', 'location', name='uix_job_id_location')
+    UniqueConstraint('job_id', 'location', name='uix_job_id_location'),
+    ForeignKeyConstraint(['city_id'], ['cities.id'], name='fk_job_location_city'),
 )
 
 # create table if not exist 
@@ -80,7 +80,8 @@ metadata.create_all(engine)
 
 # load the exchange rate table
 exchange_rates_tbl = Table('exchange_rates', metadata, autoload_with=engine)
-
+# load the cities table 
+cities_table = Table('cities', metadata, autoload_with=engine)
 
 # the main function to scrape job listings from Cake's job board based on the search term
 # @app.task()
@@ -193,7 +194,7 @@ def scrape_cake_jobs(search_term, page):
 
 # upload the data to MySQL 
 @app.task(bind=True, autoretry_for=(OperationalError,), 
-    retry_backoff=True, # waits between retries,
+    retry_backoff=True, # wait between retries,
     max_retries=3)
 def scrape_cake_jobs_upload_mysql(self, search_term, page):
     
@@ -218,6 +219,7 @@ def scrape_cake_jobs_upload_mysql(self, search_term, page):
             # create a composite key to track this job
             unique_key = record['source_job_id']
             location_map[unique_key] = locs
+
         # insert all jobs 
         insert_stmt = insert(jobs_table).values(jobs_to_insert)
         on_duplicate_stmt = insert_stmt.on_duplicate_key_update(
@@ -236,6 +238,9 @@ def scrape_cake_jobs_upload_mysql(self, search_term, page):
             )
         db_jobs = conn.execute(fetch_stmt).fetchall()
 
+        # get city ids
+        city_ids = load_city_ids(engine, cities_table)
+
         # insert location info to the location table
         locations_to_insert = []
         for db_job in db_jobs:
@@ -245,15 +250,18 @@ def scrape_cake_jobs_upload_mysql(self, search_term, page):
             # match the DB id back to the locations 
             if unique_key in location_map:
                 for loc in location_map[unique_key]:
+                    parsed = parse_cake_location(loc)
                     locations_to_insert.append({
                         'job_id': job_id,
-                        'location': loc
+                        'location': loc,
+                        'city_id': city_ids.get(parsed['city_zh']),
                     })
         if locations_to_insert:
             loc_insert_stmt = insert(job_location_table).values(locations_to_insert)
             # use insert ignore to prevent duplicate location rows
             loc_on_duplicate = loc_insert_stmt.on_duplicate_key_update(
-                job_id = loc_insert_stmt.inserted.job_id
+                job_id = loc_insert_stmt.inserted.job_id,
+                city_id = loc_insert_stmt.inserted.city_id
             )
             conn.execute(loc_on_duplicate)
         conn.commit()
