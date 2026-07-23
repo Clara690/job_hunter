@@ -49,7 +49,7 @@ TAIWAN_CITY_MAP = {
     "taitung county": ("台東縣", "Taitung County"),
     "penghu county": ("澎湖縣", "Penghu County"),
     "kinmen county": ("金門縣", "Kinmen County"),
-    "lienchiang county": ("連江縣", "Lienchiang County"),
+    "lienchiang county": ("連江縣", "Lienchiang County")
 }
 
 # load the table

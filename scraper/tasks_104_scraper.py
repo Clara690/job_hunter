@@ -122,7 +122,7 @@ def scrape_104_jobs(search_term, page):
                 "raw_location": raw_loc,
                 "city":raw_loc[:3] if raw_loc[:3] else None,
                 "district":raw_loc[3:] if raw_loc[3:] else None,
-                "city_id": city_ids.get(raw_loc[:3]) if raw_loc[:3] else None,
+                "city_id": city_ids.get(raw_loc[:3]) if raw_loc[:3] else 1,
                 "experience": job["jobRo"],
                 "remote": job["remoteWorkType"],
                 "salary_min": job["salaryLow"],

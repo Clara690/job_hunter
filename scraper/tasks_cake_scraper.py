@@ -172,7 +172,7 @@ def scrape_cake_jobs(search_term, page):
                 'popularity': job.get('unique_impressions_count'),
                 'last_updated': datetime.fromisoformat(job.get('content_updated_at').replace('Z', '+00:00')),
                 # construct the relative path 
-                'link': job.get('page', {}).get('path')+ '/jobs/' + job.get('path')
+                'link': 'https://www.cake.me/companies/'+ job.get('page', {}).get('path')+ '/jobs/' + job.get('path')
             }
             # calculate monthly salary - lower bound
             filtered_job['salary_min_monthly_twd'] = normalize_cake_salary(
@@ -223,6 +223,7 @@ def scrape_cake_jobs_upload_mysql(self, search_term, page):
         # insert all jobs 
         insert_stmt = insert(jobs_table).values(jobs_to_insert)
         on_duplicate_stmt = insert_stmt.on_duplicate_key_update(
+            link = insert_stmt.inserted.link,
             salary_min = insert_stmt.inserted.salary_min,
             salary_max = insert_stmt.inserted.salary_max,
             salary_min_monthly_twd=insert_stmt.inserted.salary_min_monthly_twd,

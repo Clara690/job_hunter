@@ -73,11 +73,11 @@ docker network create job_network
 #### Run the procuder using docker compose to send tasks
 
 ```text
-DOCKER_IMAGE_VERSION=0.0.8 docker compose -f docker-compose-producer.yml up -d
+DOCKER_IMAGE_VERSION=0.0.9 docker compose -f docker-compose-producer.yml up -d
 ```
 
 #### Run the worker using docker compose to execute tasks
 
 ```text
-DOCKER_IMAGE_VERSION=0.0.8 docker compose -f docker-compose-worker.yml up -d
+DOCKER_IMAGE_VERSION=0.0.9 docker compose -f docker-compose-worker.yml up -d
 ```
