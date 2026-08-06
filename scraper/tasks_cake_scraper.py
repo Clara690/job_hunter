@@ -189,6 +189,7 @@ def scrape_cake_jobs(search_term, page):
     if not all_jobs:
         return None
     time.sleep(random.uniform(1.5, 3.5))
+    logger.info(f'Successfully scraped {len(cleaned_jobs)} jobs from Cake for page {page}')
     return cleaned_jobs
 
 
@@ -270,3 +271,78 @@ def scrape_cake_jobs_upload_mysql(self, search_term, page):
     logger.info(f'Successfully uploaded {len(records)} jobs to MySQL for page {page}')
     return f'Success: Page {page}'
 
+# for airflow
+# scrape data and uploda to MySQL
+def air_scrape_cake_jobs_upload_mysql(search_term, page):
+    
+    # the data scrpae from cake 
+    records = scrape_cake_jobs(search_term, page)
+
+
+    if not records:
+        logger.warning(f'No data found on page {page}.')
+        return 'No data'
+
+    with engine.connect() as conn:
+    # prepare the data 
+        jobs_to_insert = []
+        location_map = {} # Maps a unique key to its location 
+        
+        for record in records:
+            # extract locations and remove from the main dict
+            locs = record.pop('raw_locations', [])
+            jobs_to_insert.append(record)
+
+            # create a composite key to track this job
+            unique_key = record['source_job_id']
+            location_map[unique_key] = locs
+
+        # insert all jobs 
+        insert_stmt = insert(jobs_table).values(jobs_to_insert)
+        on_duplicate_stmt = insert_stmt.on_duplicate_key_update(
+            link = insert_stmt.inserted.link,
+            salary_min = insert_stmt.inserted.salary_min,
+            salary_max = insert_stmt.inserted.salary_max,
+            salary_min_monthly_twd=insert_stmt.inserted.salary_min_monthly_twd,
+            salary_max_monthly_twd=insert_stmt.inserted.salary_max_monthly_twd,
+        )
+        conn.execute(on_duplicate_stmt)
+
+        # fetch the corresponding ids in the main table 
+        source_job_ids = [j['source_job_id'] for j in jobs_to_insert]
+
+        fetch_stmt = select(jobs_table.c.id, jobs_table.c.source_job_id).where(
+            jobs_table.c.source_job_id.in_(source_job_ids) 
+            )
+        db_jobs = conn.execute(fetch_stmt).fetchall()
+
+        # get city ids
+        city_ids = load_city_ids(engine, cities_table)
+
+        # insert location info to the location table
+        locations_to_insert = []
+        for db_job in db_jobs:
+            job_id = db_job.id
+            unique_key = db_job.source_job_id
+            
+            # match the DB id back to the locations 
+            if unique_key in location_map:
+                for loc in location_map[unique_key]:
+                    parsed = parse_cake_location(loc)
+                    locations_to_insert.append({
+                        'job_id': job_id,
+                        'location': loc,
+                        'city_id': city_ids.get(parsed['city_zh']),
+                    })
+        if locations_to_insert:
+            loc_insert_stmt = insert(job_location_table).values(locations_to_insert)
+            # use insert ignore to prevent duplicate location rows
+            loc_on_duplicate = loc_insert_stmt.on_duplicate_key_update(
+                job_id = loc_insert_stmt.inserted.job_id,
+                city_id = loc_insert_stmt.inserted.city_id
+            )
+            conn.execute(loc_on_duplicate)
+        conn.commit()
+
+    logger.info(f'Successfully uploaded {len(records)} jobs to MySQL for page {page}')
+    return f'Success: Page {page}'

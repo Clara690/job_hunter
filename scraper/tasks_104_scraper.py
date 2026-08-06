@@ -183,3 +183,36 @@ def scrape_104_jobs_upload_mysql(self, search_term, page):
         conn.commit()  # commit the transaction after each insert
     logger.info(f'Successfully uploaded {len(df)} jobs to MySQL for page {page}') 
     return f"Success: Page {page}"
+
+
+# for airflow
+def air_scrape_104_jobs_upload_mysql(search_term, page):
+    
+    # the data scraped from the website
+    df = scrape_104_jobs(search_term, page)
+
+    if df is None or df.empty:
+        logger.warning(f'No data found on page {page}.')
+        return 'No data'
+    
+    # convert the data frame to a list of dict for bulk insert
+    records = df.to_dict(orient="records")
+
+    with engine.connect() as conn:
+        # create an insert statement
+        insert_stmt = insert(jobs_table).values(records)
+
+        # add 'ON DUPLICATE KEY UPDATE' logic
+        on_duplicate_stmt = insert_stmt.on_duplicate_key_update(
+            salary_min=insert_stmt.inserted.salary_min,
+            salary_max=insert_stmt.inserted.salary_max,
+            period=insert_stmt.inserted.period,
+            job_type=insert_stmt.inserted.job_type,
+            salary_confidence=insert_stmt.inserted.salary_confidence,
+            city_id=insert_stmt.inserted.city_id,
+        )
+        # execute the insert statement
+        conn.execute(on_duplicate_stmt)
+        conn.commit()  # commit the transaction after each insert
+    logger.info(f'Successfully uploaded {len(df)} jobs to MySQL for page {page}') 
+    return f"Success: Page {page}"
