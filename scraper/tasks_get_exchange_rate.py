@@ -64,8 +64,43 @@ def refresh_exchange_rates(self):
         rows.append({'currency': currency, 'rate_to_twd': 1 / rate_from_twd})
 
     with engine.connect() as conn:
-        stmt = insert(Table('exchange_rates', metadata, autoload_with=engine)).values(rows)
-        stmt = stmt.on_duplicate_key_update(rate_to_twd=stmt.inserted.rate_to_twd)
+        stmt = insert(ex_rate_table).values(rows)
+        stmt = stmt.on_duplicate_key_update(rate_to_twd=stmt.inserted.rate_to_twd,
+                                            updated_at=text("CURRENT_TIMESTAMP"))
+        
+        conn.execute(stmt)
+        conn.commit()
+
+        logger.info(f'Refreshed exchange rates for {len(rows)} currencies')
+        return f'Success: {len(rows)} currencies'
+
+def air_refresh_exchange_rates():
+    """Airflow task to refresh exchange rates"""
+    resp = requests.get(RATES_URL, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+
+    if data.get('result') != 'success':
+        logger.error(f'Exchange rate API returned non-success: {data}')
+        return 'Failed'
+    
+    twd_rates = data['rates']
+
+    rows = []
+    for currency in CURRENCY_OF_INTEREST:
+        if currency == 'TWD':
+            rows.append({'currency': currency, 'rate_to_twd': 1.0})
+            continue
+        rate_from_twd = twd_rates.get(currency)
+        if not rate_from_twd:
+            logger.warning(f'No rate for {currency}, skipping...')
+            continue
+        rows.append({'currency': currency, 'rate_to_twd': 1 / rate_from_twd})
+
+    with engine.connect() as conn:
+        stmt = insert(ex_rate_table).values(rows)
+        stmt = stmt.on_duplicate_key_update(rate_to_twd=stmt.inserted.rate_to_twd,
+                                            updated_at=text("CURRENT_TIMESTAMP"))
         
         conn.execute(stmt)
         conn.commit()
