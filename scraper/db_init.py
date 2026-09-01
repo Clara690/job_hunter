@@ -11,10 +11,20 @@ engine = create_engine(
     f"mysql+pymysql://{MYSQL_ACCOUNT}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/data_jobs",
     poolclass=NullPool
 )
-# define the table 
+# define the tables
 metadata = MetaData()
 
-jobs_table = Table(
+# cities 
+cities_table = Table(
+    "cities",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("city_zh", String(10), nullable=False, unique=True),
+    Column("city_en", String(30), nullable=False, unique=True),
+    Column("is_overseas", Integer, nullable=False),  # tinyint(1)
+)
+
+jobs_104_table = Table(
     "jobs_104", 
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
@@ -50,7 +60,7 @@ logger.info("Table jobs_104 created or already exists.")
 
 # the main table 
 # location information is stored in another table as some roles are associated with more than one location
-jobs_table = Table(
+jobs_cake_table = Table(
      'jobs_cake', 
      metadata,
      Column('id', Integer, primary_key=True, autoincrement=True),
